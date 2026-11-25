@@ -346,3 +346,48 @@ func TestArrowClosedConn(t *testing.T) {
 	})
 	require.Error(t, err)
 }
+
+// DECIMAL types wider than 38 digits arrive as decimal256, which holds up to 76 digits.
+func TestArrowWideDecimal(t *testing.T) {
+	c := newConnectorWrapper(t, ``, nil)
+	defer closeConnectorWrapper(t, c)
+	conn := openDriverConnWrapper(t, c)
+	defer closeDriverConnWrapper(t, &conn)
+	// decimal256 needs Arrow format version 1.1, set it for DuckDB versions that default to 1.0.
+	_, err := conn.(driver.ExecerContext).ExecContext(context.Background(), `SET arrow_output_version = '1.5'`, nil)
+	require.NoError(t, err)
+	ar, err := NewArrowFromConn(conn)
+	require.NoError(t, err)
+
+	text := wideDecimalText(76, 10, true)
+	rdr, err := ar.QueryContext(context.Background(), `SELECT '`+text+`'::DECIMAL(76,10) AS d,
+		1.25::DECIMAL(38,2) + 1.25::DECIMAL(38,2) AS s, NULL::DECIMAL(50,5) AS n`)
+	require.NoError(t, err)
+	defer rdr.Release()
+
+	fields := rdr.Schema().Fields()
+	require.True(t, arrow.TypeEqual(&arrow.Decimal256Type{Precision: 76, Scale: 10}, fields[0].Type), fields[0].Type.String())
+	require.True(t, arrow.TypeEqual(&arrow.Decimal256Type{Precision: 39, Scale: 2}, fields[1].Type), fields[1].Type.String())
+	require.True(t, arrow.TypeEqual(&arrow.Decimal256Type{Precision: 50, Scale: 5}, fields[2].Type), fields[2].Type.String())
+
+	require.True(t, rdr.Next())
+	rec := rdr.RecordBatch()
+	require.Equal(t, int64(1), rec.NumRows())
+	d := rec.Column(0).(*array.Decimal256)
+	require.Equal(t, wideDecimal(t, 76, 10, true).Value.String(), d.Value(0).BigInt().String())
+	s := rec.Column(1).(*array.Decimal256)
+	require.Equal(t, "250", s.Value(0).BigInt().String())
+	require.True(t, rec.Column(2).IsNull(0))
+	require.False(t, rdr.Next())
+	require.NoError(t, rdr.Err())
+
+	// Arrow has no decimal type for more than 76 digits.
+	rdr, err = ar.QueryContext(context.Background(), `SELECT 1::DECIMAL(77,0)`)
+	if err == nil {
+		for rdr.Next() {
+		}
+		err = rdr.Err()
+		rdr.Release()
+	}
+	require.ErrorContains(t, err, "DECIMAL(77,0)")
+}

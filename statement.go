@@ -202,11 +202,29 @@ func (s *Stmt) bindUhugeint(val *big.Int, n int) (mapping.State, error) {
 }
 
 func (s *Stmt) bindDecimal(val Decimal, n int) (mapping.State, error) {
+	if val.Value != nil && !decimalFitsHugeInt(val.Value) {
+		return s.bindWideDecimal(val, n)
+	}
 	dec, err := decimalFromNative(val)
 	if err != nil {
 		return mapping.StateError, addIndexToError(err, n+1)
 	}
 	return mapping.BindDecimal(*s.preparedStmt, mapping.IdxT(n+1), dec), nil
+}
+
+// bindWideDecimal binds a DECIMAL whose unscaled value exceeds 128 bits.
+// The C API has no DECIMAL value constructor for such values, so the exact decimal text is bound,
+// which DuckDB casts to the type of the parameter without loss.
+// A parameter without a type of its own, as in SELECT ?, therefore is a VARCHAR
+// and needs a cast to stay a DECIMAL: SELECT ?::DECIMAL(50, 2).
+func (s *Stmt) bindWideDecimal(val Decimal, n int) (mapping.State, error) {
+	if err := validateDecimalWidthScale(val.Width, val.Scale); err != nil {
+		return mapping.StateError, addIndexToError(err, n+1)
+	}
+	if !decimalFitsWidth(val.Value, val.Width) {
+		return mapping.StateError, addIndexToError(errDecimalValueExceedsWidth, n+1)
+	}
+	return mapping.BindVarchar(*s.preparedStmt, mapping.IdxT(n+1), val.plainString()), nil
 }
 
 func (s *Stmt) bindBigNum(val *big.Int, n int) (mapping.State, error) {

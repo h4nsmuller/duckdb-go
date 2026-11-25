@@ -247,6 +247,8 @@ func (vec *vector) getDecimal(rowIdx mapping.IdxT) (Decimal, error) {
 	case TYPE_HUGEINT:
 		v := getPrimitive[mapping.HugeInt](vec, rowIdx)
 		val = hugeIntToNative(&v)
+	case TYPE_BIGNUM:
+		val = vec.getBigNum(rowIdx)
 	default:
 		return Decimal{}, unsupportedTypeError(typeName(vec.internalType))
 	}

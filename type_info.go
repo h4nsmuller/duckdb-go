@@ -544,6 +544,9 @@ func newTypeInfoFromLogicalType(lt mapping.LogicalType) (TypeInfo, error) {
 func newDecimalInfoFromLogicalType(lt mapping.LogicalType) (TypeInfo, error) {
 	width := mapping.DecimalWidth(lt)
 	scale := mapping.DecimalScale(lt)
+	if width == 0 {
+		return nil, getError(errAPI, errDecimalWidthUnknown)
+	}
 	return NewDecimalInfo(width, scale)
 }
 

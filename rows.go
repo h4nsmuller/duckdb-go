@@ -226,6 +226,10 @@ func logicalTypeName(logicalType mapping.LogicalType) string {
 func logicalTypeNameDecimal(logicalType mapping.LogicalType) string {
 	width := mapping.DecimalWidth(logicalType)
 	scale := mapping.DecimalScale(logicalType)
+	if width == 0 {
+		// The C API does not expose the width and scale of types wider than 255 digits.
+		return "DECIMAL"
+	}
 	return fmt.Sprintf("DECIMAL(%d,%d)", int(width), int(scale))
 }
 

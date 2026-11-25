@@ -345,7 +345,8 @@ func hugeIntFromNative(i *big.Int) (mapping.HugeInt, error) {
 }
 
 func validateDecimalWidthScale(width, scale uint8) error {
-	if width < 1 || width > max_decimal_width {
+	// The uint8 width cannot exceed max_decimal_width.
+	if width < 1 {
 		return errInvalidDecimalWidth
 	}
 	if scale > width {
@@ -363,14 +364,53 @@ func decimalFromNative(d Decimal) (mapping.Decimal, error) {
 	}
 	// DuckDB does not validate this: depending on Width, a value with more digits aborts the
 	// process, is truncated, or is stored outside DECIMAL(Width, Scale).
-	if len(new(big.Int).Abs(d.Value).String()) > int(d.Width) {
+	if !decimalFitsWidth(d.Value, d.Width) {
 		return mapping.Decimal{}, errDecimalValueExceedsWidth
 	}
+	// A duckdb_decimal carries a 128-bit value at any width.
 	value, err := hugeIntFromNative(d.Value)
 	if err != nil {
 		return mapping.Decimal{}, err
 	}
 	return mapping.NewDecimal(d.Width, d.Scale, value), nil
+}
+
+// decimalFitsWidth returns whether the unscaled value has at most width digits.
+func decimalFitsWidth(unscaled *big.Int, width uint8) bool {
+	// 10^width has more than width*log2(10) > width*3.32 bits.
+	if unscaled.BitLen() <= int(width)*3 {
+		return true
+	}
+	limit := new(big.Int).Exp(big.NewInt(10), big.NewInt(int64(width)), nil)
+	return unscaled.CmpAbs(limit) < 0
+}
+
+// decimalFitsHugeInt returns whether the unscaled value fits into a DuckDB HUGEINT,
+// which is all a duckdb_decimal can carry.
+func decimalFitsHugeInt(unscaled *big.Int) bool {
+	if unscaled.Sign() >= 0 {
+		return unscaled.BitLen() <= 127
+	}
+	// The minimum is -2^127.
+	return new(big.Int).Add(unscaled, big.NewInt(1)).BitLen() <= 127
+}
+
+// plainString returns the exact value in plain notation, keeping all Scale fractional digits.
+// It is the text DuckDB casts back to the same DECIMAL without loss.
+func (d Decimal) plainString() string {
+	digits := new(big.Int).Abs(d.Value).String()
+	scale := int(d.Scale)
+	if len(digits) <= scale {
+		digits = strings.Repeat("0", scale-len(digits)+1) + digits
+	}
+	sign := ""
+	if d.Value.Sign() < 0 {
+		sign = "-"
+	}
+	if scale == 0 {
+		return sign + digits
+	}
+	return sign + digits[:len(digits)-scale] + "." + digits[len(digits)-scale:]
 }
 
 func inferHugeInt(val any) (mapping.HugeInt, error) {
@@ -734,8 +774,14 @@ func (s *Composite[T]) Scan(v any) error {
 	return mapstructure.Decode(v, &s.t)
 }
 
-const max_decimal_width = 38
+// max_decimal_width is the widest DECIMAL type the driver can describe.
+// DuckDB itself supports wider types, but the C API reports and accepts the width as a uint8.
+// Widths above 38 are wide decimals, which DuckDB stores as BIGNUM.
+const max_decimal_width = 255
 
+// Decimal is a DECIMAL value: Value is the unscaled integer, so the number is Value / 10^Scale.
+// Widths above 38 are wide decimals. The DuckDB C API reports the width and scale of a type
+// as uint8, so columns wider than 255 digits cannot be read as a Decimal; cast them to VARCHAR.
 type Decimal struct {
 	Width uint8
 	Scale uint8

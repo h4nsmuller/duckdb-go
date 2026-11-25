@@ -176,6 +176,7 @@ var (
 	errNullMapKey               = errors.New("MAP keys cannot be NULL")
 	errEmptyName                = errors.New("empty name")
 	errInvalidDecimalWidth      = fmt.Errorf("the DECIMAL width must be between 1 and %d", max_decimal_width)
+	errDecimalWidthUnknown      = fmt.Errorf("DECIMAL types wider than %d digits are not supported: the DuckDB C API does not expose their width and scale, cast the values to VARCHAR instead", max_decimal_width)
 	errInvalidDecimalScale      = errors.New("the DECIMAL scale must be less than or equal to the width")
 	errDecimalValueExceedsWidth = errors.New("the DECIMAL value has more digits than the width")
 	errInvalidArraySize         = errors.New("invalid ARRAY size")

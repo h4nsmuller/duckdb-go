@@ -2277,7 +2277,6 @@ func TestBindDecimalErrors(t *testing.T) {
 		wantErr error
 	}{
 		{name: "width zero", val: Decimal{Width: 0, Value: big.NewInt(0)}, wantErr: errInvalidDecimalWidth},
-		{name: "width too large", val: Decimal{Width: 39, Value: big.NewInt(0)}, wantErr: errInvalidDecimalWidth},
 		{name: "scale exceeds width", val: Decimal{Width: 2, Scale: 3, Value: big.NewInt(1)}, wantErr: errInvalidDecimalScale},
 		{name: "value exceeds width", val: Decimal{Width: 2, Value: big.NewInt(100)}, wantErr: errDecimalValueExceedsWidth},
 		{name: "negative value exceeds width", val: Decimal{Width: 2, Value: big.NewInt(-100)}, wantErr: errDecimalValueExceedsWidth},

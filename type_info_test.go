@@ -271,8 +271,6 @@ func TestErrTypeInfo(t *testing.T) {
 	// Invalid DECIMAL.
 	_, err := NewDecimalInfo(0, 0)
 	testError(t, err, errAPI.Error(), errInvalidDecimalWidth.Error())
-	_, err = NewDecimalInfo(42, 20)
-	testError(t, err, errAPI.Error(), errInvalidDecimalWidth.Error())
 	_, err = NewDecimalInfo(5, 6)
 	testError(t, err, errAPI.Error(), errInvalidDecimalScale.Error())
 

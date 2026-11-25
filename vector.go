@@ -299,8 +299,14 @@ func (vec *vector) initDecimal(logicalType mapping.LogicalType, colIdx int) erro
 	vec.decimalScale = mapping.DecimalScale(logicalType)
 
 	t := mapping.DecimalInternalType(logicalType)
+	if vec.decimalWidth == 0 {
+		// The C API reports the width and scale as uint8 and returns 0 for wider types,
+		// so the scale of the values is unknown.
+		return addIndexToError(errDecimalWidthUnknown, colIdx)
+	}
 	switch t {
-	case TYPE_SMALLINT, TYPE_INTEGER, TYPE_BIGINT, TYPE_HUGEINT:
+	case TYPE_SMALLINT, TYPE_INTEGER, TYPE_BIGINT, TYPE_HUGEINT, TYPE_BIGNUM:
+		// Widths above 38 store their unscaled value as a BIGNUM blob.
 		vec.getFn = func(vec *vector, rowIdx mapping.IdxT) (any, error) {
 			if vec.getNull(rowIdx) {
 				return nil, nil

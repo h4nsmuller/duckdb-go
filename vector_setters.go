@@ -347,9 +347,25 @@ func setDecimal[S any](vec *vector, rowIdx mapping.IdxT, val S) error {
 		return setNumeric[S, int64](vec, rowIdx, val)
 	case TYPE_HUGEINT:
 		return setHugeint(vec, rowIdx, val)
+	case TYPE_BIGNUM:
+		return setWideDecimal(vec, rowIdx, val)
 	default:
 		return unsupportedTypeError(typeName(vec.internalType))
 	}
+}
+
+// setWideDecimal writes the unscaled value of a DECIMAL wider than 38 digits.
+// DuckDB stores it as a BIGNUM blob and does not validate it,
+// so values with more digits than the width are rejected here.
+func setWideDecimal[S any](vec *vector, rowIdx mapping.IdxT, val S) error {
+	i, err := numToBigInt(val)
+	if err != nil {
+		return err
+	}
+	if !decimalFitsWidth(i, vec.decimalWidth) {
+		return errDecimalValueExceedsWidth
+	}
+	return setBignum(vec, rowIdx, i)
 }
 
 func setEnum[S any](vec *vector, rowIdx mapping.IdxT, val S) error {
