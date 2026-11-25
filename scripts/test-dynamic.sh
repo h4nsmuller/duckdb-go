@@ -1,5 +1,6 @@
 #!/usr/bin/env bash
-# Test against the pinned shared library, verifying its checksum before use.
+# Test against the pinned shared library, verifying its checksum before use,
+# or against a local build of DuckDB when DUCKDB_LIB_DIR is set.
 
 set -euo pipefail
 
@@ -8,6 +9,22 @@ cd "$REPO_ROOT"
 export CGO_ENABLED=1
 
 PLATFORM="$(go env GOOS)-$(go env GOARCH)"
+
+# DUCKDB_LIB_DIR tests against a locally built shared library instead of the pinned release,
+# e.g., the build/release/src directory of a DuckDB checkout. Nothing is downloaded.
+if [[ -n ${DUCKDB_LIB_DIR:-} ]]; then
+  if [[ $PLATFORM == windows-* ]]; then
+    LIB_LINK_DIR="$(cygpath -m "$DUCKDB_LIB_DIR")"
+    export CGO_LDFLAGS="${CGO_LDFLAGS:+$CGO_LDFLAGS }\"-L$LIB_LINK_DIR\""
+    PATH="$DUCKDB_LIB_DIR:$PATH" go test -tags="${TAGS:+$TAGS,}duckdb_use_lib" "$@"
+    exit
+  fi
+  LD_LIBRARY_PATH="$DUCKDB_LIB_DIR${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}" \
+    go test -tags="${TAGS:+$TAGS,}duckdb_use_lib" \
+      -ldflags="-extldflags '-L$DUCKDB_LIB_DIR -Wl,-rpath,$DUCKDB_LIB_DIR'" "$@"
+  exit
+fi
+
 BINDINGS_DIR="$(go mod download -json github.com/duckdb/duckdb-go-bindings | jq -r .Dir)"
 MANIFEST="$BINDINGS_DIR/duckdb-release.json"
 BASE_URL="$(jq -r .base_url "$MANIFEST")"

@@ -54,6 +54,13 @@ It downloads and verifies the shared library before running the tests, caching t
 in `dynamic-dir` for subsequent runs, including offline runs.
 `test.static` uses the native module's static libraries.
 
+To test against a locally built DuckDB instead, e.g., a build of DuckDB `main`,
+point `DUCKDB_LIB_DIR` at the directory holding its shared library. Nothing is downloaded:
+
+```sh
+DUCKDB_LIB_DIR=/path/to/duckdb/build/release/src ./scripts/test-dynamic.sh ./...
+```
+
 #### Coverage
 
 Run `make check-coverage`, then open `cover.html` in a browser.
