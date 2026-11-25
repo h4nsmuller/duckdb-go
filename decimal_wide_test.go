@@ -237,24 +237,12 @@ func TestWideDecimalBind(t *testing.T) {
 				val := wideDecimal(t, tt.width, tt.scale, negative)
 				typ := fmt.Sprintf("DECIMAL(%d,%d)", tt.width, tt.scale)
 
-				// The exact value reaches DuckDB; the cast gives the parameter its type.
+				// The parameter keeps its DECIMAL type at any size of the value.
 				var gotType string
 				var got Decimal
-				query := fmt.Sprintf(`SELECT typeof(?::%s), ?::%s`, typ, typ)
-				require.NoError(t, db.QueryRow(query, val, &val).Scan(&gotType, &got))
+				require.NoError(t, db.QueryRow(`SELECT typeof(?), ?`, val, &val).Scan(&gotType, &got))
 				require.Equal(t, typ, gotType)
 				compareDecimal(t, val, got)
-
-				// A 39-digit value can still fit into 128 bits and then keeps its type.
-				// Otherwise, without a parameter type, the exact text arrives as a VARCHAR.
-				wantType := "VARCHAR"
-				if decimalFitsHugeInt(val.Value) {
-					require.Equal(t, 39, tt.width)
-					wantType = typ
-				}
-				var text string
-				require.NoError(t, db.QueryRow(`SELECT typeof(?) || ' ' || ?`, val, val).Scan(&text))
-				require.Equal(t, wantType+" "+val.plainString(), text)
 			}
 		}
 	})
@@ -288,7 +276,7 @@ func TestWideDecimalBind(t *testing.T) {
 		// More digits than the width, beyond 128 bits.
 		tooLong := wideDecimal(t, 60, 0, false)
 		tooLong.Width = 59
-		err := db.QueryRow(`SELECT ?::DECIMAL(59,0)`, tooLong).Scan(&got)
+		err := db.QueryRow(`SELECT ?`, tooLong).Scan(&got)
 		require.ErrorIs(t, err, errDecimalValueExceedsWidth)
 		require.ErrorContains(t, err, "index: 1")
 
@@ -298,7 +286,7 @@ func TestWideDecimalBind(t *testing.T) {
 
 		badScale := wideDecimal(t, 60, 0, false)
 		badScale.Scale = 61
-		err = db.QueryRow(`SELECT ?::DECIMAL(60,0)`, badScale).Scan(&got)
+		err = db.QueryRow(`SELECT ?`, badScale).Scan(&got)
 		require.ErrorIs(t, err, errInvalidDecimalScale)
 	})
 }

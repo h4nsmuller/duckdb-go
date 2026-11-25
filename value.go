@@ -641,3 +641,30 @@ func extractSlice[S any](val S) ([]any, error) {
 
 	return s, nil
 }
+
+// createWideDecimalValue creates a DECIMAL value whose unscaled value exceeds 128 bits.
+// The C API has no constructor for it: a duckdb_decimal carries a 128-bit value.
+// A LIST value casts its children to the child type, so the exact decimal text
+// becomes the DECIMAL child of a one-element list, which is then extracted.
+func createWideDecimalValue(d Decimal) (mapping.Value, error) {
+	if err := validateDecimalWidthScale(d.Width, d.Scale); err != nil {
+		return mapping.Value{}, err
+	}
+	if d.Value == nil {
+		return mapping.Value{}, castError("nil Decimal.Value", "*big.Int")
+	}
+	if !decimalFitsWidth(d.Value, d.Width) {
+		return mapping.Value{}, errDecimalValueExceedsWidth
+	}
+
+	lt := mapping.CreateDecimalType(d.Width, d.Scale)
+	defer mapping.DestroyLogicalType(&lt)
+	text := mapping.CreateVarchar(d.plainString())
+	defer mapping.DestroyValue(&text)
+	list, err := checkCreatedValue(mapping.CreateListValue(lt, []mapping.Value{text}))
+	if err != nil {
+		return mapping.Value{}, err
+	}
+	defer mapping.DestroyValue(&list)
+	return checkCreatedValue(mapping.GetListChild(list, 0))
+}
